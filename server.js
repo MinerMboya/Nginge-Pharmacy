@@ -174,7 +174,14 @@ const parseCookies = (header) => {
   const result = {};
   String(header || "").split(";").forEach((part) => {
     const index = part.indexOf("=");
-    if (index > -1) result[part.slice(0, index).trim()] = decodeURIComponent(part.slice(index + 1).trim());
+    if (index < 1) return;
+    const name = part.slice(0, index).trim();
+    const value = part.slice(index + 1).trim();
+    try {
+      result[name] = decodeURIComponent(value);
+    } catch {
+      result[name] = "";
+    }
   });
   return result;
 };
