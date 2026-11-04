@@ -37,7 +37,7 @@ The server inserts five starter product categories on a new database. These are 
 - Normalised malformed JSON and oversized request errors to safe 4xx responses.
 - Expanded the smoke test to cover these controls, expired-stock rejection, failed-sale rollback and cashier route restrictions.
 
-These changes are in a working branch pending automated CI verification and review. They have not yet been merged to `main` or deployed to the live Replit workspace.
+The latest hardening branch commit passed GitHub Actions on 4 November 2026: the dependency audit reported zero vulnerabilities, and the expanded syntax/integration smoke test passed. The changes remain on `hardening/phase-1` in an open pull request and have not been merged to `main` or deployed to the live Replit workspace.
 
 ## Remaining production work
 
