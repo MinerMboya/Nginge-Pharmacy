@@ -70,6 +70,10 @@ async function main() {
     assert.equal(healthResponse.response.headers.get("x-frame-options"), "SAMEORIGIN");
     assert.equal(healthResponse.response.headers.get("cache-control"), "no-store");
     await request("/api/products", { expectStatus: 401 });
+    await request("/api/products", {
+      cookie: "nginge_session=%E0%A4%A",
+      expectStatus: 401
+    });
     await request("/api/auth/login", {
       method: "POST",
       headers: { Origin: "https://attacker.example" },
