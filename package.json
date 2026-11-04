@@ -1,0 +1,19 @@
+{
+  "name": "nginge-pharmacy",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Nginge Pharmacy point of sale, inventory and pharmacy operations system",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node --check server.js && node --check public/app.js && node scripts/smoke-test.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "better-sqlite3": "13.0.3",
+    "express": "5.3.0"
+  }
+}

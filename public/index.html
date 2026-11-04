@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#173b32">
+  <meta name="description" content="Nginge Pharmacy point of sale and stock management">
+  <title>Nginge Pharmacy</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div id="boot-screen" class="boot-screen">
+    <div class="brand-mark">N</div>
+    <span>Opening your pharmacy workspace…</span>
+  </div>
+  <section id="auth-view" class="auth-screen hidden">
+    <div class="auth-aside">
+      <div class="auth-brand">
+        <div class="brand-mark">N</div>
+        <div><strong>Nginge Pharmacy</strong><span>PHARMACY OPERATIONS</span></div>
+      </div>
+      <div class="auth-message">
+        <span class="eyebrow">CARE, WITH CLARITY</span>
+        <h1>Better care starts with a better way to work.</h1>
+        <p>Sales, stock, suppliers and expiry tracking—together in one dependable workspace.</p>
+        <div class="auth-aside-note"><span class="aside-dot"></span> Designed for everyday pharmacy operations</div>
+      </div>
+      <div class="auth-aside-footer">NGINGE PHARMACY <span>·</span> KENYA</div>
+    </div>
+    <div class="auth-main">
+      <div class="auth-form-wrap">
+        <div class="mobile-auth-brand"><div class="brand-mark">N</div><strong>Nginge Pharmacy</strong></div>
+        <span id="auth-eyebrow" class="eyebrow">WELCOME BACK</span>
+        <h2 id="auth-title">Sign in to continue</h2>
+        <p id="auth-description" class="muted">Use your staff account to access the pharmacy workspace.</p>
+        <form id="auth-form" class="stack-form">
+          <div id="auth-fields"></div>
+          <button class="btn btn-primary btn-wide" type="submit" id="auth-submit">Sign in <span>→</span></button>
+        </form>
+        <div class="auth-footnote"><span class="secure-dot"></span> Secure staff access · Kenyan Shillings (KES)</div>
+      </div>
+    </div>
+  </section>
+  <div id="app-shell" class="app-shell hidden">
+    <aside id="sidebar" class="sidebar">
+      <div class="sidebar-brand">
+        <div class="brand-mark">N</div>
+        <div class="brand-copy"><strong id="sidebar-pharmacy">Nginge Pharmacy</strong><span>PHARMACY OPERATIONS</span></div>
+      </div>
+      <div class="sidebar-label">WORKSPACE</div>
+      <nav id="main-nav" class="main-nav"></nav>
+      <div class="sidebar-bottom">
+        <div class="sidebar-help"><span class="help-icon">✳</span><div><strong>Stock under control</strong><small>Keep every batch accounted for.</small></div></div>
+        <div class="profile-row">
+          <div class="avatar" id="user-avatar">N</div>
+          <div class="profile-copy"><strong id="profile-name">Staff member</strong><small id="profile-role">Cashier</small></div>
+          <button id="logout-button" class="icon-button" title="Sign out" aria-label="Sign out">↗</button>
+        </div>
+      </div>
+    </aside>
+    <main class="main-area">
+      <header class="topbar">
+        <div class="topbar-left">
+          <button id="mobile-menu" class="icon-button mobile-menu" aria-label="Open menu">☰</button>
+          <div><div class="breadcrumb">Nginge Pharmacy <span>/</span> <strong id="page-breadcrumb">Dashboard</strong></div><h1 id="page-title">Good morning</h1></div>
+        </div>
+        <div class="topbar-right">
+          <div class="today-chip"><span class="today-dot"></span><span id="today-label">Today</span></div>
+          <div class="topbar-user"><div class="avatar avatar-small" id="top-avatar">N</div><span id="top-user-name">Staff</span></div>
+        </div>
+      </header>
+      <div id="page-content" class="page-content"></div>
+      <footer class="app-footer"><span>Nginge Pharmacy</span><span>Pharmacy operations workspace <b>·</b> KES</span></footer>
+    </main>
+  </div>
+  <div id="modal-root"></div>
+  <div id="toast-root" class="toast-root" aria-live="polite"></div>
+  <script src="/app.js" defer></script>
+</body>
+</html>
