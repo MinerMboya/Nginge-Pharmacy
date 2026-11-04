@@ -7,7 +7,46 @@ const path = require("node:path");
 const app = express();
 app.disable("x-powered-by");
 app.set("trust proxy", 1);
-app.use(express.json({ limit: "1mb" }));
+app.use((req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  res.setHeader("Content-Security-Policy", [
+    "default-src 'self'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'self'",
+    "object-src 'none'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' https://fonts.gstatic.com data:",
+    "img-src 'self' data:",
+    "connect-src 'self'"
+  ].join("; "));
+  if (req.secure) res.setHeader("Strict-Transport-Security", "max-age=15552000");
+  if (req.path.startsWith("/api/")) res.setHeader("Cache-Control", "no-store");
+  next();
+});
+app.use(express.json({ limit: "256kb" }));
+app.use("/api", (req, res, next) => {
+  if (!["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) return next();
+  if (req.body == null) req.body = {};
+  if (typeof req.body !== "object" || Array.isArray(req.body)) {
+    return res.status(400).json({ error: "The request body must be a JSON object." });
+  }
+  const origin = req.get("origin");
+  if (origin) {
+    try {
+      if (new URL(origin).host !== req.get("host")) {
+        return res.status(403).json({ error: "Requests must come from this pharmacy application." });
+      }
+    } catch {
+      return res.status(403).json({ error: "The request origin is not valid." });
+    }
+  }
+  next();
+});
 
 const port = Number(process.env.PORT || 5000);
 const databasePath = process.env.DATABASE_PATH || path.join(__dirname, ".data", "nginge-pharmacy.db");
@@ -83,12 +122,22 @@ const asInteger = (value, label, min = 0) => {
   if (!Number.isSafeInteger(number) || number < min) fail(400, label + " must be a whole number.");
   return number;
 };
-const cents = (value, label) => Math.round(asNumber(value, label, 0) * 100);
+const safeCentsValue = (value, label) => {
+  if (!Number.isSafeInteger(value) || value < 0) fail(400, label + " is too large.");
+  return value;
+};
+const addCents = (current, value, label) => safeCentsValue(current + value, label);
+const multiplyCents = (unitCents, quantity, label) => safeCentsValue(unitCents * quantity, label);
+const cents = (value, label) => safeCentsValue(Math.round(asNumber(value, label, 0) * 100), label);
 const money = (value) => Number((Number(value || 0) / 100).toFixed(2));
 const validDate = (value) => {
   if (!value) return null;
   const date = String(value);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(date + "T00:00:00Z"))) fail(400, "Enter a valid expiry date.");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) fail(400, "Enter a valid expiry date.");
+  const timestamp = Date.parse(date + "T00:00:00Z");
+  if (Number.isNaN(timestamp) || new Date(timestamp).toISOString().slice(0, 10) !== date) {
+    fail(400, "Enter a valid expiry date.");
+  }
   return date;
 };
 const passwordHash = (password, salt) => crypto.scryptSync(password, salt, 64).toString("hex");
@@ -188,6 +237,9 @@ app.post("/api/setup", (req, res, next) => {
     if (!fullName || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fail(400, "Enter your name and a valid email address.");
     const credentials = makePassword(req.body.password);
     const transaction = db.transaction(() => {
+      if (db.prepare("SELECT COUNT(*) AS count FROM users").get().count > 0) {
+        fail(403, "The initial setup has already been completed.");
+      }
       const result = db.prepare("INSERT INTO users (full_name, email, phone, role, password_hash, password_salt, is_active, created_at, updated_at) VALUES (?, ?, ?, 'admin', ?, ?, 1, ?, ?)")
         .run(fullName, email, trim(req.body.phone, 40), credentials.hash, credentials.salt, now(), now());
       db.prepare("UPDATE settings SET pharmacy_name = ?, phone = ?, updated_at = ? WHERE id = 1")
@@ -195,27 +247,43 @@ app.post("/api/setup", (req, res, next) => {
       audit(result.lastInsertRowid, "Initial administrator setup", "user", result.lastInsertRowid, { pharmacy_name: pharmacyName });
       return result.lastInsertRowid;
     });
-    const userId = transaction();
+    const userId = transaction.immediate();
     createSession(req, res, userId);
     res.status(201).json({ user: safeUser(db.prepare("SELECT * FROM users WHERE id = ?").get(userId)), settings: getSettings() });
   } catch (error) { next(error); }
 });
 
 const loginAttempts = new Map();
+const loginWindowMs = 15 * 60 * 1000;
+const dummyLoginSalt = crypto.randomBytes(16).toString("hex");
+const dummyLoginHash = passwordHash("not-a-real-password", dummyLoginSalt);
+const pruneLoginAttempts = () => {
+  const cutoff = Date.now() - loginWindowMs;
+  for (const [key, attempt] of loginAttempts) {
+    if (attempt.since <= cutoff) loginAttempts.delete(key);
+  }
+};
+const loginAttemptCleanup = setInterval(pruneLoginAttempts, 5 * 60 * 1000);
+loginAttemptCleanup.unref();
 app.post("/api/auth/login", (req, res, next) => {
   try {
-    const ip = req.ip || "unknown";
+    const ip = req.ip || req.socket.remoteAddress || "unknown";
     const attempt = loginAttempts.get(ip) || { count: 0, since: Date.now() };
-    if (Date.now() - attempt.since > 15 * 60 * 1000) { attempt.count = 0; attempt.since = Date.now(); }
+    if (Date.now() - attempt.since > loginWindowMs) { attempt.count = 0; attempt.since = Date.now(); }
     if (attempt.count >= 10) fail(429, "Too many sign-in attempts. Please try again in 15 minutes.");
     const email = trim(req.body.email, 160).toLowerCase();
     const password = String(req.body.password || "");
     const user = db.prepare("SELECT * FROM users WHERE email = ? COLLATE NOCASE").get(email);
-    const valid = user && user.is_active && password.length <= 200 &&
-      crypto.timingSafeEqual(Buffer.from(passwordHash(password, user.password_salt), "hex"), Buffer.from(user.password_hash, "hex"));
+    const salt = user ? user.password_salt : dummyLoginSalt;
+    const expectedHash = user ? user.password_hash : dummyLoginHash;
+    const candidatePassword = password.length <= 200 ? password : "invalid-password-length";
+    const candidateHash = passwordHash(candidatePassword, salt);
+    const passwordMatches = crypto.timingSafeEqual(Buffer.from(candidateHash, "hex"), Buffer.from(expectedHash, "hex"));
+    const valid = Boolean(user && user.is_active && password.length <= 200 && passwordMatches);
     if (!valid) {
       attempt.count += 1;
       loginAttempts.set(ip, attempt);
+      if (loginAttempts.size > 10000) pruneLoginAttempts();
       fail(401, "The email or password is incorrect.");
     }
     loginAttempts.delete(ip);
@@ -467,7 +535,8 @@ app.post("/api/purchases", adminOnly, (req, res, next) => {
       const unitCost = cents(item.unit_cost, "Unit cost");
       return { product, quantity, unitCost, batchNumber: trim(item.batch_number, 80), expiryDate: validDate(item.expiry_date) };
     });
-    const subtotal = items.reduce((sum, item) => sum + item.quantity * item.unitCost, 0);
+    const subtotal = items.reduce((sum, item) =>
+      addCents(sum, multiplyCents(item.unitCost, item.quantity, "Purchase line total"), "Purchase total"), 0);
     const transaction = db.transaction(() => {
       const result = db.prepare("INSERT INTO purchases (supplier_id, invoice_number, status, subtotal_cents, notes, created_by, created_at) VALUES (?, ?, 'draft', ?, ?, ?, ?)")
         .run(supplierId, trim(req.body.invoice_number, 100), subtotal, trim(req.body.notes, 500), req.user.id, now());
@@ -577,14 +646,15 @@ app.post("/api/sales", (req, res, next) => {
       const discountPercent = asNumber(entry.discount_percent || 0, "Discount", 0);
       const limit = req.user.role === "admin" ? 100 : settings.cashier_discount_limit;
       if (discountPercent > limit) fail(403, "The permitted discount for this account is " + limit + "%.");
-      const gross = product.selling_price_cents * quantity;
-      const discount = Math.round(gross * discountPercent / 100);
+      const gross = multiplyCents(product.selling_price_cents, quantity, "Sale line total");
+      const discount = safeCentsValue(Math.round(gross * (discountPercent / 100)), "Sale discount");
       return { product, quantity, discountPercent, gross, discount, net: gross - discount };
     });
-    const subtotal = items.reduce((sum, item) => sum + item.gross, 0);
-    const discount = items.reduce((sum, item) => sum + item.discount, 0);
-    const tax = settings.tax_enabled ? Math.round((subtotal - discount) * Number(settings.tax_rate) / 100) : 0;
-    const total = subtotal - discount + tax;
+    const subtotal = items.reduce((sum, item) => addCents(sum, item.gross, "Sale subtotal"), 0);
+    const discount = items.reduce((sum, item) => addCents(sum, item.discount, "Sale discount"), 0);
+    const taxable = subtotal - discount;
+    const tax = settings.tax_enabled ? safeCentsValue(Math.round(taxable * (Number(settings.tax_rate) / 100)), "Sale tax") : 0;
+    const total = addCents(taxable, tax, "Sale total");
     const paid = paymentMethod === "cash" ? cents(req.body.amount_paid, "Amount received") : total;
     if (paid < total) fail(400, "The amount received is less than the sale total.");
     const change = paymentMethod === "cash" ? paid - total : 0;
@@ -663,6 +733,7 @@ app.get("/api/reports", adminOnly, (req, res) => {
   if (period === "monthly") from = today.slice(0, 7) + "-01";
   if (req.query.from) from = validDate(req.query.from);
   const to = req.query.to ? validDate(req.query.to) : today;
+  if (from > to) fail(400, "The report start date must be on or before the end date.");
   const totals = db.prepare("SELECT COUNT(*) AS transactions, COALESCE(SUM(total_cents),0) AS revenue, COALESCE(SUM(discount_cents),0) AS discounts, COALESCE(SUM(tax_cents),0) AS tax FROM sales WHERE status = 'completed' AND date(created_at, '+3 hours') BETWEEN ? AND ?").get(from, to);
   const cogs = db.prepare("SELECT COALESCE(SUM(a.quantity * a.unit_cost_cents),0) AS total FROM sale_item_allocations a JOIN sale_items i ON i.id = a.sale_item_id JOIN sales s ON s.id = i.sale_id WHERE s.status = 'completed' AND date(s.created_at, '+3 hours') BETWEEN ? AND ?").get(from, to).total;
   const netSales = db.prepare("SELECT COALESCE(SUM(i.line_total_cents),0) AS total FROM sale_items i JOIN sales s ON s.id = i.sale_id WHERE s.status = 'completed' AND date(s.created_at, '+3 hours') BETWEEN ? AND ?").get(from, to).total;
@@ -763,6 +834,12 @@ app.use(express.static(path.join(__dirname, "public"), { extensions: ["html"] })
 app.use((error, req, res, next) => {
   if (res.headersSent) return next(error);
   if (error instanceof AppError) return res.status(error.status).json({ error: error.message });
+  if (error && error.type === "entity.parse.failed") {
+    return res.status(400).json({ error: "The request body contains invalid JSON." });
+  }
+  if (error && error.type === "entity.too.large") {
+    return res.status(413).json({ error: "The request body is too large." });
+  }
   if (error && error.code === "SQLITE_CONSTRAINT_UNIQUE") return res.status(409).json({ error: "That record already exists. Check the name, SKU, barcode or email and try again." });
   if (error && error.code === "SQLITE_CONSTRAINT_FOREIGNKEY") return res.status(400).json({ error: "This record is linked to other records and cannot be changed that way." });
   console.error(error);
