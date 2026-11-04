@@ -292,7 +292,7 @@ async function main() {
       cookie: adminCookie,
       body: {
         payment_method: "cash",
-        amount_paid: 100000,
+        amount_paid: 20000000,
         items: [{ product_id: productId, quantity: 100000 }]
       },
       expectStatus: 409
