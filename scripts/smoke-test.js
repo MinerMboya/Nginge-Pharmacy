@@ -208,7 +208,7 @@ async function main() {
       body: { reason: "Automated cancellation test" }
     });
     let products = await request("/api/products", { cookie: adminCookie });
-    assert.equal(products.data[0].stock_quantity, 12, "Cancelling a sale should restore the original batch stock.");
+    assert.equal(products.data.find((row) => row.id === productId).stock_quantity, 12, "Cancelling a sale should restore the original batch stock.");
 
     const supplier = await request("/api/suppliers", {
       method: "POST",
@@ -233,7 +233,7 @@ async function main() {
     });
     await request("/api/purchases/" + purchase.data.id + "/receive", { method: "POST", cookie: adminCookie, body: {} });
     products = await request("/api/products", { cookie: adminCookie });
-    assert.equal(products.data[0].stock_quantity, 17, "Receiving a purchase should increase stock.");
+    assert.equal(products.data.find((row) => row.id === productId).stock_quantity, 17, "Receiving a purchase should increase stock.");
 
     const cashier = await request("/api/staff", {
       method: "POST",
