@@ -37,7 +37,7 @@ async function main() {
 
   const request = async (route, options) => {
     const config = options || {};
-    const headers = { ...(config.cookie ? { Cookie: config.cookie } : {}), ...(config.body ? { "Content-Type": "application/json" } : {}) };
+    const headers = { ...(config.headers || {}), ...(config.cookie ? { Cookie: config.cookie } : {}), ...(config.body ? { "Content-Type": "application/json" } : {}) };
     const response = await fetch(base + route, {
       method: config.method || "GET",
       headers,
@@ -65,6 +65,24 @@ async function main() {
     }
     assert.ok(ready, "Server did not become ready.\n" + output);
 
+    const healthResponse = await request("/api/health");
+    assert.equal(healthResponse.response.headers.get("x-content-type-options"), "nosniff");
+    assert.equal(healthResponse.response.headers.get("x-frame-options"), "SAMEORIGIN");
+    assert.equal(healthResponse.response.headers.get("cache-control"), "no-store");
+    await request("/api/products", { expectStatus: 401 });
+    await request("/api/auth/login", {
+      method: "POST",
+      headers: { Origin: "https://attacker.example" },
+      body: { email: "nobody@example.test", password: "wrong-password" },
+      expectStatus: 403
+    });
+    const malformedJson = await fetch(base + "/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{not-json"
+    });
+    assert.equal(malformedJson.status, 400, "Malformed JSON must be rejected as a client error.");
+
     const setup = await request("/api/setup", {
       method: "POST",
       body: {
@@ -78,6 +96,76 @@ async function main() {
     const adminCookie = (setup.response.headers.get("set-cookie") || "").split(";")[0];
     assert.ok(adminCookie.includes("nginge_session="), "Administrator session cookie was not set.");
     assert.equal(setup.data.user.role, "admin");
+    await request("/api/setup", {
+      method: "POST",
+      body: {
+        full_name: "Second Administrator",
+        email: "second-owner@example.test",
+        password: "AnotherSafePass123"
+      },
+      expectStatus: 403
+    });
+    await request("/api/staff/" + setup.data.user.id, {
+      method: "PATCH",
+      cookie: adminCookie,
+      body: { is_active: false },
+      expectStatus: 400
+    });
+
+    const invalidCalendarDate = await request("/api/products", {
+      method: "POST",
+      cookie: adminCookie,
+      body: {
+        name: "Invalid Date Product",
+        sku: "INVALID-DATE-001",
+        purchase_price: 10,
+        selling_price: 20,
+        initial_stock: 1,
+        batch_number: "BAD-DATE",
+        expiry_date: "2027-02-30"
+      },
+      expectStatus: 400
+    });
+    assert.ok(invalidCalendarDate.data.error.includes("valid expiry date"));
+
+    await request("/api/products", {
+      method: "POST",
+      cookie: adminCookie,
+      body: {
+        name: "Overflow Product",
+        sku: "OVERFLOW-001",
+        purchase_price: Number.MAX_SAFE_INTEGER,
+        selling_price: 20
+      },
+      expectStatus: 400
+    });
+
+    const expiredDate = new Date(Date.now() - 2 * 86400000).toISOString().slice(0, 10);
+    const expiredProduct = await request("/api/products", {
+      method: "POST",
+      cookie: adminCookie,
+      body: {
+        name: "Expired Test Stock",
+        sku: "EXPIRED-TEST-001",
+        purchase_price: 10,
+        selling_price: 20,
+        initial_stock: 2,
+        batch_number: "EXPIRED-TEST-BATCH",
+        expiry_date: expiredDate
+      }
+    });
+    await request("/api/sales", {
+      method: "POST",
+      cookie: adminCookie,
+      body: {
+        payment_method: "cash",
+        amount_paid: 20,
+        items: [{ product_id: expiredProduct.data.id, quantity: 1 }]
+      },
+      expectStatus: 409
+    });
+    const expiredStockCheck = await request("/api/products?search=Expired%20Test%20Stock", { cookie: adminCookie });
+    assert.equal(expiredStockCheck.data[0].stock_quantity, 2, "Expired stock must not be sold or deducted.");
 
     const product = await request("/api/products", {
       method: "POST",
@@ -170,6 +258,7 @@ async function main() {
 
     const forbiddenReport = await request("/api/reports", { cookie: cashierCookie, expectStatus: 403 });
     assert.ok(forbiddenReport.data.error.includes("Administrator"));
+    await request("/api/staff", { cookie: cashierCookie, expectStatus: 403 });
     await request("/api/sales", {
       method: "POST",
       cookie: cashierCookie,
@@ -196,6 +285,22 @@ async function main() {
     const report = await request("/api/reports?period=monthly", { cookie: adminCookie });
     assert.equal(report.data.summary.transactions, 1);
     assert.ok(report.data.summary.gross_profit >= 0);
+    await request("/api/reports?from=2026-11-04&to=2026-11-03", { cookie: adminCookie, expectStatus: 400 });
+
+    const insufficientSale = await request("/api/sales", {
+      method: "POST",
+      cookie: adminCookie,
+      body: {
+        payment_method: "cash",
+        amount_paid: 100000,
+        items: [{ product_id: productId, quantity: 100000 }]
+      },
+      expectStatus: 409
+    });
+    assert.ok(insufficientSale.data.error.includes("Not enough unexpired stock"));
+    products = await request("/api/products", { cookie: adminCookie });
+    assert.equal(products.data.find((row) => row.id === productId).stock_quantity, 17,
+      "A failed sale must roll back all stock and batch changes.");
 
     const audit = await request("/api/audit", { cookie: adminCookie });
     assert.ok(audit.data.some((entry) => entry.action === "Cancelled sale and returned stock"));
@@ -205,7 +310,20 @@ async function main() {
     assert.ok(movements.data.some((entry) => entry.movement_type === "sale_return"));
     assert.ok(movements.data.some((entry) => entry.movement_type === "purchase_received"));
 
-    console.log("Nginge Pharmacy smoke test passed: setup, authentication, product creation, FEFO sale allocation, cash change, sale cancellation, stock restoration, supplier purchase receiving, cashier permissions, M-Pesa recording, reports and audit history.");
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      await request("/api/auth/login", {
+        method: "POST",
+        body: { email: "cashier.updated@example.test", password: "incorrect-password" },
+        expectStatus: 401
+      });
+    }
+    await request("/api/auth/login", {
+      method: "POST",
+      body: { email: "cashier.updated@example.test", password: "CashierPass123" },
+      expectStatus: 429
+    });
+
+    console.log("Nginge Pharmacy smoke test passed: security headers, same-origin protection, malformed request handling, one-time setup, authentication throttling, strict date and money validation, expired-stock blocking, FEFO sale allocation, rollback safety, stock restoration, supplier receiving, cashier permissions, M-Pesa recording, reports and audit history.");
   } finally {
     child.kill("SIGTERM");
     await pause(150);
