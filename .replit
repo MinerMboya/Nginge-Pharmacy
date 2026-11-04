@@ -1,5 +1,6 @@
 entrypoint = "server.js"
 run = "npm run dev"
+modules = ["nodejs-22"]
 
 [[ports]]
 localPort = 5000
