@@ -42,3 +42,23 @@ An administrator can create cashier and additional administrator accounts under 
 Run npm test to check server and browser JavaScript syntax and execute an end-to-end smoke test against a temporary SQLite database. The test covers administrator setup, authentication, product creation, cash checkout and change, sale cancellation and stock restoration, supplier purchases and stock receiving, cashier permissions, M-Pesa transaction recording, reports and audit history.
 
 The database is created automatically on first start. No external database service or API key is required for the local/Replit preview.
+
+## Preview in Replit without using Agent
+
+This repository includes a Replit Run command and an explicit Preview port mapping. You do not need Agent to install packages or start the app.
+
+For an existing Replit workspace linked to this repository:
+
+1. Stop any old run process.
+2. Open the **Shell** tool (not the Agent chat).
+3. Pull the latest source: `git pull --ff-only origin main`.
+4. Install the project dependencies once: `npm install`.
+5. Click **Run**. The configured command is `npm run dev`.
+
+The server listens on `0.0.0.0:5000`, and `.replit` maps internal port 5000 to Replit's external Preview port 80. The Preview pane should open the running application.
+
+You can also start it directly from Shell with `npm run dev`. Keep that process running while using Preview. Stop it with Ctrl+C in Shell before starting it again.
+
+If Replit shows the editor but no Preview, open the **Networking** tool and confirm that port 5000 is open and mapped to external port 80. Do not ask Agent to configure the project.
+
+GitHub `main` remains the source of truth. After we change the code in GitHub, pull the changes into this Replit workspace before previewing them.
