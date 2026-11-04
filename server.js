@@ -714,20 +714,25 @@ app.patch("/api/staff/:id", adminOnly, (req, res, next) => {
     if (id === req.user.id && (req.body.is_active === false || req.body.role === "cashier")) fail(400, "You cannot deactivate or remove your own administrator access.");
     const nextRole = req.body.role === "admin" || req.body.role === "cashier" ? req.body.role : user.role;
     const nextActive = typeof req.body.is_active === "boolean" ? (req.body.is_active ? 1 : 0) : user.is_active;
+    const nextName = req.body.full_name == null ? user.full_name : trim(req.body.full_name, 100);
+    const nextEmail = req.body.email == null ? user.email : trim(req.body.email, 160).toLowerCase();
+    const nextPhone = req.body.phone == null ? user.phone : trim(req.body.phone, 40);
+    if (!nextName || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(nextEmail)) fail(400, "Enter a valid staff name and email address.");
     if (user.role === "admin" && (nextRole !== "admin" || nextActive === 0)) {
       const admins = db.prepare("SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND is_active = 1").get().count;
       if (admins <= 1) fail(400, "At least one active administrator must remain.");
     }
     const credentials = req.body.password ? makePassword(req.body.password) : null;
     if (credentials) {
-      db.prepare("UPDATE users SET role = ?, is_active = ?, password_hash = ?, password_salt = ?, updated_at = ? WHERE id = ?")
-        .run(nextRole, nextActive, credentials.hash, credentials.salt, now(), id);
+      db.prepare("UPDATE users SET full_name = ?, email = ?, phone = ?, role = ?, is_active = ?, password_hash = ?, password_salt = ?, updated_at = ? WHERE id = ?")
+        .run(nextName, nextEmail, nextPhone, nextRole, nextActive, credentials.hash, credentials.salt, now(), id);
       db.prepare("DELETE FROM sessions WHERE user_id = ?").run(id);
     } else {
-      db.prepare("UPDATE users SET role = ?, is_active = ?, updated_at = ? WHERE id = ?").run(nextRole, nextActive, now(), id);
-      if (!nextActive) db.prepare("DELETE FROM sessions WHERE user_id = ?").run(id);
+      db.prepare("UPDATE users SET full_name = ?, email = ?, phone = ?, role = ?, is_active = ?, updated_at = ? WHERE id = ?")
+        .run(nextName, nextEmail, nextPhone, nextRole, nextActive, now(), id);
+      if (!nextActive || nextEmail !== user.email) db.prepare("DELETE FROM sessions WHERE user_id = ?").run(id);
     }
-    audit(req.user.id, "Updated staff access", "user", id, { role: nextRole, is_active: Boolean(nextActive), password_reset: Boolean(credentials) });
+    audit(req.user.id, "Updated staff access", "user", id, { full_name: nextName, email: nextEmail, role: nextRole, is_active: Boolean(nextActive), password_reset: Boolean(credentials) });
     res.json(safeUser(db.prepare("SELECT * FROM users WHERE id = ?").get(id)));
   } catch (error) { next(error); }
 });

@@ -605,8 +605,8 @@ function purchaseItemRow(index) {
     '<div class="form-group"><label class="field-label">Medicine</label><select class="field" data-purchase-field="product_id" required>' + options + '</select></div>' +
     '<div class="form-group"><label class="field-label">Quantity</label><input class="field" data-purchase-field="quantity" type="number" min="1" step="1" value="1" required></div>' +
     '<div class="form-group"><label class="field-label">Unit cost</label><input class="field" data-purchase-field="unit_cost" type="number" min="0" step="0.01" required placeholder="KES"></div>' +
-    '<div class="form-group"><label class="field-label">Batch no.</label><input class="field" data-purchase-field="batch_number" required placeholder="Batch"></div>' +
-    '<div class="form-group"><label class="field-label">Expiry</label><input class="field" data-purchase-field="expiry_date" type="date" required></div>' +
+    '<div class="form-group"><label class="field-label">Batch no.</label><input class="field" data-purchase-field="batch_number" placeholder="Batch"></div>' +
+    '<div class="form-group"><label class="field-label">Expiry</label><input class="field" data-purchase-field="expiry_date" type="date"></div>' +
     '<button type="button" class="icon-action remove-item" data-action="purchase-remove-row" data-row="' + index + '" aria-label="Remove item">×</button></div>';
 }
 
