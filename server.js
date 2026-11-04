@@ -717,7 +717,7 @@ app.patch("/api/staff/:id", adminOnly, (req, res, next) => {
     const nextName = req.body.full_name == null ? user.full_name : trim(req.body.full_name, 100);
     const nextEmail = req.body.email == null ? user.email : trim(req.body.email, 160).toLowerCase();
     const nextPhone = req.body.phone == null ? user.phone : trim(req.body.phone, 40);
-    if (!nextName || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(nextEmail)) fail(400, "Enter a valid staff name and email address.");
+    if (!nextName || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(nextEmail)) fail(400, "Enter a valid staff name and email address.");
     if (user.role === "admin" && (nextRole !== "admin" || nextActive === 0)) {
       const admins = db.prepare("SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND is_active = 1").get().count;
       if (admins <= 1) fail(400, "At least one active administrator must remain.");

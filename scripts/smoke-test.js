@@ -147,15 +147,23 @@ async function main() {
     products = await request("/api/products", { cookie: adminCookie });
     assert.equal(products.data[0].stock_quantity, 17, "Receiving a purchase should increase stock.");
 
-    await request("/api/staff", {
+    const cashier = await request("/api/staff", {
       method: "POST",
       cookie: adminCookie,
       body: { full_name: "Test Cashier", email: "cashier@example.test", role: "cashier", password: "CashierPass123" }
     });
+    await request("/api/staff/" + cashier.data.id, {
+      method: "PATCH",
+      cookie: adminCookie,
+      body: { full_name: "Updated Test Cashier", email: "cashier.updated@example.test", phone: "0722222222" }
+    });
     const login = await request("/api/auth/login", {
       method: "POST",
-      body: { email: "cashier@example.test", password: "CashierPass123" }
+      body: { email: "cashier.updated@example.test", password: "CashierPass123" }
     });
+    const cashierProfile = await request("/api/me", { cookie: (login.response.headers.get("set-cookie") || "").split(";")[0] });
+    assert.equal(cashierProfile.data.user.full_name, "Updated Test Cashier");
+    assert.equal(cashierProfile.data.user.phone, "0722222222");
     const cashierCookie = (login.response.headers.get("set-cookie") || "").split(";")[0];
     assert.ok(cashierCookie.includes("nginge_session="), "Cashier session cookie was not set.");
     assert.equal(login.data.user.role, "cashier");
