@@ -1,5 +1,8 @@
 name: Nginge Pharmacy checks
 
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main]
@@ -15,8 +18,11 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: 24\n          package-manager-cache: false
+          node-version: 24
+          package-manager-cache: false
       - name: Install dependencies
         run: npm install
+      - name: Audit installed dependencies
+        run: npm audit --audit-level=high
       - name: Run syntax and workflow tests
         run: npm test
