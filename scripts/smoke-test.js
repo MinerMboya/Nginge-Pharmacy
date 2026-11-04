@@ -287,6 +287,8 @@ async function main() {
     assert.ok(report.data.summary.gross_profit >= 0);
     await request("/api/reports?from=2026-11-04&to=2026-11-03", { cookie: adminCookie, expectStatus: 400 });
 
+    const beforeFailedSale = await request("/api/products", { cookie: adminCookie });
+    const stockBeforeFailedSale = beforeFailedSale.data.find((row) => row.id === productId).stock_quantity;
     const insufficientSale = await request("/api/sales", {
       method: "POST",
       cookie: adminCookie,
@@ -299,7 +301,7 @@ async function main() {
     });
     assert.ok(insufficientSale.data.error.includes("Not enough unexpired stock"));
     products = await request("/api/products", { cookie: adminCookie });
-    assert.equal(products.data.find((row) => row.id === productId).stock_quantity, 17,
+    assert.equal(products.data.find((row) => row.id === productId).stock_quantity, stockBeforeFailedSale,
       "A failed sale must roll back all stock and batch changes.");
 
     const audit = await request("/api/audit", { cookie: adminCookie });
